@@ -2,37 +2,49 @@ from rest_framework import serializers
 from .models import Note, User
 
 class UserSerializer(serializers.ModelSerializer):
+    re_password = serializers.CharField(write_only=True, required=True)
+
     class Meta:
-        re_password = serializers.CharField(required=True, write_only=True)
         model = User
         fields = (
             'first_name',
             'username',
             'email',
             'password',
+            're_password',
         )
         extra_kwargs = {
             'first_name': {'required': True},
             'username': {'required': True},
             'email': {'required': True},
             'password': {'required': True, 'write_only': True},
+            're_password': {'write_only': True},
         }
 
-    def validate(self, value):
-        if value['re_password'] != value['password']:
+    def validate(self, data):
+        if data.get('re_password') != data.get('password'):
             raise serializers.ValidationError({'password': "Passwords do not match"})
-        return super().validate(value)
-
-        if value['email'] and User.objects.filter(email=value['email']).exists():
+        if data.get('email') and User.objects.filter(email=data['email']).exists():
             raise serializers.ValidationError({'email': "Email already exists"})
-        return super().validate(value)
+        return data
 
     def create(self, validated_data):
+        validated_data.pop('re_password', None)
         user = User.objects.create_user(
-            email=self.validated_data['email'],
-            first_name=self.validated_data['first_name'],
-            username=self.validated_data['username'],
-            password=self.validated_data['password']
+            first_name=validated_data['first_name'],
+            email=validated_data['email'],
+            username=validated_data['username'],
+            password=validated_data['password']
+        )
+        return user
+    
+    def create_super_user(self, Validate_data):
+        Validate_data.pop('re_password', None)
+        user = user.objects.create_superuser(
+            first_name=validated_data['first_name'],
+            email=validated_data['email'],
+            username=validated_data['username'],
+            password=validated_data['password']
         )
         return user
 
@@ -74,3 +86,7 @@ class TokenObtainPairSerializer(serializers.Serializer):
         token['username'] = user.username
         token['email'] = user.email
         return token
+
+class LoginSerializer(serializers.Serializer):
+    username = serializers.CharField(required=True)
+    password = serializers.CharField(required=True, write_only=True)

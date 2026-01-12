@@ -17,7 +17,7 @@ class UserManager(BaseUserManager):
             raise ValueError('The Username field must be set')
 
         email = self.normalize_email(email)
-        user = self.model(email=email, username=username, first_name=first_name **extra_fields)
+        user = self.model(email=email, username=username, first_name=first_name, **extra_fields)
         user.set_password(password)
         user.save(using=self._db)
         return user
@@ -29,7 +29,7 @@ class UserManager(BaseUserManager):
         if extra_fields.get('is_superuser') is not True:
             raise ValueError('Superuser must have is_superuser=True.')
 
-        return self.create_user(email,first_name, username, password, **extra_fields)
+        return self.create_user(first_name=first_name, email=email, username=username, password=password, **extra_fields)
 
 
 class User(AbstractUser, PermissionsMixin):
@@ -53,7 +53,7 @@ class User(AbstractUser, PermissionsMixin):
 
 class Note(models.Model):
     id = models.UUIDField(default=uuid.uuid4, primary_key=True, editable=False)
-    user = models.ForeignKey(User, on_delete=models.CASCADE)
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
     title = models.CharField(max_length=200)
     content = models.TextField()
     created_at = models.DateTimeField(auto_now_add=True)
@@ -63,11 +63,8 @@ class Note(models.Model):
         return self.title
 
     def create_note(self, title, content):
-        note = self,model(
-            title = title,
-            content = content,
-        )
-        note.save(using=self._db)
+        note = Note(title=title, content=content)
+        note.save()
         return note
     
     def update_note(self, title, content):
