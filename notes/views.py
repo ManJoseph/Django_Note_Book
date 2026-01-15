@@ -1,68 +1,67 @@
-from django.http import JsonResponse
-from notes.serializers import UserSerializer, NoteSerializer, LoginSerializer
+
+from notes.serializers import UserSerializer, NoteSerializer, LoginSerializer, CustomTokenObtainPairSerializer
 from notes.models import User, Note
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
 from django.shortcuts import get_object_or_404
 from rest_framework import status
+from django.contrib.auth import authenticate
+from rest_framework.authtoken.models import Token
+from notes.serializers import CustomTokenObtainPairSerializer
+from rest_framework_simplejwt.exceptions import TokenError, InvalidToken
+from rest_framework_simplejwt.views import TokenObtainPairView
+from rest_framework import  viewsets
+from rest_framework.permissions import AllowAny
+from rest_framework import filters
 
-# Create your views here.
-@api_view(["GET"])
-def note_list(request):
-    notes = Note.objects.all()
-    serializer = NoteSerializer(notes, many=True)
-    return JsonResponse({
-        'data': serializer.data
-    })
+class UserViewSet(viewsets.ModelViewSet):
+    queryset = User.objects.all()
+    serializer_class = UserSerializer
+    permission_classes = [AllowAny]
+    filter_backends = [filters.SearchFilter]
+    search_fields = ['email', 'username', 'first_name']
 
-@api_view(["POST"])
-def create_user(request):
-    serializer = UserSerializer(data=request.data)
-    serializer.is_valid(raise_exception=True)
-    serializer.save()
-    return JsonResponse(serializer.data)
-
-@api_view(["GET"])
-def users(request):
-    users = User.objects.all()
-    serializer = UserSerializer(users, many=True)
-    return JsonResponse(serializer.data,  safe=False)
-
-@api_view(["POST"])
-def create_superuser(request):
-    serializer = UserSerializer(data=request.data)
-    serializer.is_valid(raise_exception=True)
-    serializer.save()
-    return JsonResponse(serializer.data,  safe=False)
-
-@api_view(['POST'])
-def login_user(request):
-    serializer = LoginSerializer(data=request.data)
-
-    #this validates inputed data for emptyness, missing field, etc...
-    if not serializer.is_valid():
+    def create(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        user = serializer.save()
         return Response(
-            serializer.errors,
-            status=status.HTTP_400_BAD_REQUEST
+            self.get_serializer(user).data,
+            status=status.HTTP_201_CREATED
         )
+class LoginAPIView(viewsets.ViewSet):
+    custom_serializer = CustomTokenObtainPairSerializer
+    queryset = User.objects.all()
+    permission_classes = ()
+ 
+   
+    def create(self, request, *args, **kwargs):
+        '''
+        User login with Jwt token
+        params : username , password
+        return : Jwt token
+        '''
+        serializer = self.custom_serializer(data=request.data)
 
-    username = serializer.validated_data['username']
-    password = serializer.validated_data['password']
-
-    user = authenticate(username=username, password=password)
-
-    if user is None:
+        try:
+            serializer.is_valid(raise_exception=True)
+        except TokenError as e:
+            raise InvalidToken(e.args[0])
+        return Response(serializer.validated_data, status=status.HTTP_200_OK)
+    
+class NotesAPIView(viewsets.ModelViewSet):
+    queryset = Note.objects.all()
+    serializer_class = NoteSerializer
+    permission_classes = [AllowAny]
+    filter_backends = [filters.SearchFilter]
+    search_fields = ['title', 'user__email', 'user__username']
+    
+    def create(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        note = serializer.save()
+        
         return Response(
-            {"error": "Invalid username or password"},
-            status=status.HTTP_401_UNAUTHORIZED
+            self.get_serializer(note).data,
+            status=status.HTTP_201_CREATED
         )
-
-    token, _ = Token.objects.get_or_create(user=user)
-
-    return Response(
-        {
-            "message": "Login successful",
-            "token": token.key
-        },
-        status=status.HTTP_200_OK
-    )

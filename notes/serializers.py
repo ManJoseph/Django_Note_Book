@@ -1,5 +1,7 @@
+import datetime
 from rest_framework import serializers
 from .models import Note, User
+from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 
 class UserSerializer(serializers.ModelSerializer):
     re_password = serializers.CharField(write_only=True, required=True)
@@ -77,16 +79,52 @@ class NoteSerializer(serializers.ModelSerializer):
             instance.delete_note()
             return instance
 
-class TokenObtainPairSerializer(serializers.Serializer):
-
+class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
+    email = serializers.EmailField(required=False, allow_blank=True)
+    password = serializers.CharField(required=True, write_only=True)
+    
+    def validate(self, attrs):
+        # Allow login via email
+        email = attrs.get('email')
+        password = attrs.get('password')
+        
+        if not (email):
+            raise serializers.ValidationError("Email required.")
+        
+        if email:
+            try:
+                user = User.objects.get(email=email)
+            except User.DoesNotExist:
+                raise serializers.ValidationError("Invalid email or password.")
+        
+        if not user.check_password(password):
+            raise serializers.ValidationError("Invalid email/username or password.")
+        
+        if not user.is_active:
+            raise serializers.ValidationError("User account is inactive.")
+        
+        refresh = self.get_token(user)
+        
+        data = {
+            'refresh': str(refresh),
+            'access': str(refresh.access_token),
+            'user': {
+                'id': str(user.id),
+                'email': user.email,
+                'first_name': user.first_name,
+            }
+        }
+        return data
+    
     @classmethod
     def get_token(cls, user):
         token = super().get_token(user)
-        # Added custom claims
+        # Add custom claims
+        token['first_name'] = user.first_name
         token['username'] = user.username
         token['email'] = user.email
         return token
 
 class LoginSerializer(serializers.Serializer):
-    username = serializers.CharField(required=True)
+    email = serializers.EmailField(required=False, allow_blank=True)
     password = serializers.CharField(required=True, write_only=True)
